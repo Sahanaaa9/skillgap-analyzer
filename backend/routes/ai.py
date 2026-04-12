@@ -1,14 +1,13 @@
 from fastapi import APIRouter, HTTPException, Header
 from models import GapAnalysisRequest, RevenueRequest, TrainingPlanRequest
 from database import supabase
-import google.generativeai as genai
+from groq import Groq
 from dotenv import load_dotenv
 import os
 import json
 
 load_dotenv()
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel("gemini-1.5-flash")
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 router = APIRouter(prefix="/ai", tags=["AI Features"])
 
@@ -29,6 +28,14 @@ def clean_json(text: str):
     if text.endswith("```"):
         text = text[:-3]
     return text.strip()
+
+def ask_ai(prompt: str) -> str:
+    completion = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.7,
+    )
+    return completion.choices[0].message.content
 
 @router.post("/gap-analysis")
 def gap_analysis(data: GapAnalysisRequest, authorization: str = Header(...)):
@@ -61,8 +68,8 @@ Return ONLY a JSON array with no extra text. Format:
 Include missing critical skills for the role AND existing skills below required level.
 Limit to top 5 most important gaps only.
 """
-        response = model.generate_content(prompt)
-        gaps = json.loads(clean_json(response.text))
+        response = ask_ai(prompt)
+        gaps = json.loads(clean_json(response))
         return {"employee_id": data.employee_id, "gaps": gaps}
     except json.JSONDecodeError:
         raise HTTPException(status_code=500, detail="AI returned invalid format. Try again.")
@@ -92,8 +99,8 @@ Return ONLY a JSON object with no extra text. Format:
   "confidence": "High/Medium/Low"
 }}
 """
-        response = model.generate_content(prompt)
-        result = json.loads(clean_json(response.text))
+        response = ask_ai(prompt)
+        result = json.loads(clean_json(response))
         return result
     except json.JSONDecodeError:
         raise HTTPException(status_code=500, detail="AI returned invalid format. Try again.")
@@ -129,8 +136,8 @@ Return ONLY a JSON object with no extra text. Format:
 
 Include 4 phases covering weeks 1-3, 4-6, 7-9, and 10-13. Use only free resources.
 """
-        response = model.generate_content(prompt)
-        plan = json.loads(clean_json(response.text))
+        response = ask_ai(prompt)
+        plan = json.loads(clean_json(response))
         supabase.table("training_plans").insert({
             "employee_name": data.employee_name,
             "skill_gap": data.skill_gap,
@@ -166,8 +173,8 @@ Return ONLY a JSON object with no extra text. Format:
   "risk_if_ignored": "one sentence on business risk"
 }}
 """
-        response = model.generate_content(prompt)
-        result = json.loads(clean_json(response.text))
+        response = ask_ai(prompt)
+        result = json.loads(clean_json(response))
         return result
     except json.JSONDecodeError:
         raise HTTPException(status_code=500, detail="AI returned invalid format. Try again.")
